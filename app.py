@@ -11,9 +11,10 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from urllib.parse import urlparse
 import time
-from typing import Set, List, Tuple
+from typing import Set, List, Tuple, Optional, Dict
 from collections import Counter
 import io
+from firebase_auth import verify_token, get_user_by_uid, is_development, is_production
 
 
 # Page configuration
@@ -2103,14 +2104,142 @@ def process_sitemap(url: str, visited: Set[str], all_urls: Set[str], status_cont
         status_container.warning(f"Error processing {url}: {str(e)}")
 
 
+def verify_user_authentication() -> Optional[Dict]:
+    """
+    Verify Firebase authentication token from query parameters.
+    In development mode, automatically returns mock user without token.
+    
+    Returns:
+        User information dictionary if authenticated, None otherwise
+    """
+    # In development mode, automatically authenticate with mock user
+    if is_development():
+        return verify_token("")  # Returns mock user in dev mode
+    
+    # In production mode, require token from query parameters
+    query_params = st.query_params
+    token = query_params.get("token", None)
+    
+    if not token:
+        return None
+    
+    # Verify the token
+    user_info = verify_token(token)
+    
+    return user_info
+
+
+def display_user_info_compact(user_info: Dict) -> None:
+    """
+    Display authenticated user information in a compact card for top-right corner.
+    
+    Args:
+        user_info: Dictionary containing user information
+    """
+    # Add mode badge
+    mode_badge = ""
+    if user_info.get("mode") == "development":
+        mode_badge = '<span style="background-color: #FFF4E6; color: #FF9800; padding: 0.25rem 0.5rem; border-radius: 8px; font-size: 0.7rem; font-weight: 600; display: block; text-align: center; margin-top: 0.5rem;">DEV MODE</span>'
+    
+    email = user_info.get('email', 'N/A')
+    # Try multiple name fields from Firebase
+    name = user_info.get('name') or user_info.get('display_name') or user_info.get('email', 'User').split('@')[0]
+    verified_icon = '✅' if user_info.get('email_verified') else '❌'
+    # Try multiple picture fields from Firebase
+    picture = user_info.get('picture') or user_info.get('photo_url') or user_info.get('photoURL')
+    
+    # Profile photo or icon
+    if picture and picture.strip():
+        profile_display = f'<img src="{picture}" alt="Profile" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid {PRIMARY_BLUE}; margin-bottom: 0.5rem;" onerror="this.onerror=null; this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';" /><div style="font-size: 2.5rem; margin-bottom: 0.5rem; display: none;">👤</div>'
+    else:
+        profile_display = '<div style="font-size: 2.5rem; margin-bottom: 0.5rem;">👤</div>'
+    
+    st.markdown(f"""
+    <div style="
+        background-color: {LIGHT_BLUE};
+        border: 2px solid {PRIMARY_BLUE};
+        border-radius: 12px;
+        padding: 1rem;
+        margin-top: 0.5rem;
+        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.15);
+        text-align: center;
+    ">
+        {profile_display}
+        <div style="font-size: 0.9rem; font-weight: 600; color: {PRIMARY_BLUE}; margin-bottom: 0.25rem;">{name}</div>
+        <div style="font-size: 0.75rem; color: #6B7280; margin-bottom: 0.25rem; word-break: break-all;">{email}</div>
+        <div style="font-size: 0.75rem; color: #6B7280;">{verified_icon} Verified</div>
+        {mode_badge}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def display_user_info(user_info: Dict) -> None:
+    """
+    Display authenticated user information in a styled card.
+    
+    Args:
+        user_info: Dictionary containing user information
+    """
+    # Add mode badge
+    mode_badge = ""
+    if user_info.get("mode") == "development":
+        mode_badge = '<span style="background-color: #FFF4E6; color: #FF9800; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem;">DEV MODE</span>'
+    
+    email = user_info.get('email', 'N/A')
+    name = user_info.get('name', user_info.get('display_name', 'User'))
+    verified_icon = '✅' if user_info.get('email_verified') else '❌'
+    picture = user_info.get('picture', user_info.get('photo_url', None))
+    
+    # Profile photo or icon
+    if picture:
+        profile_display = f'<img src="{picture}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid {PRIMARY_BLUE}; margin-bottom: 1rem;" />'
+    else:
+        profile_display = '<div style="font-size: 3rem; margin-bottom: 1rem;">👤</div>'
+    
+    st.markdown(f"""
+    <div style="
+        background-color: {LIGHT_BLUE};
+        border-left: 4px solid {PRIMARY_BLUE};
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        text-align: center;
+    ">
+        {profile_display}
+        <h3 style="margin-top: 0; color: {PRIMARY_BLUE};">👤 {name} {mode_badge}</h3>
+        <p style="margin: 0.5rem 0;"><strong>Email:</strong> {email}</p>
+        <p style="margin: 0.5rem 0;"><strong>User ID:</strong> {user_info.get('uid', 'N/A')}</p>
+        <p style="margin: 0.5rem 0;"><strong>Email Verified:</strong> {verified_icon}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def main():
     """Main Streamlit app."""
     # Inject Botpresso CSS
     inject_botpresso_css()
     
+    # Check for authentication
+    user_info = verify_user_authentication()
+    
     # Main content area (sidebar removed)
-    st.title("XML Sitemap URL Extractor")
-    st.markdown("Extract HTML page URLs from XML sitemaps with support for nested sitemap indexes.")
+    # Create top bar with title and user info
+    title_col, user_col = st.columns([3, 1])
+    
+    with title_col:
+        st.title("XML Sitemap URL Extractor")
+        st.markdown("Extract HTML page URLs from XML sitemaps with support for nested sitemap indexes.")
+    
+    with user_col:
+        # Display user info if authenticated
+        if user_info:
+            display_user_info_compact(user_info)
+        else:
+            # Only show this in production mode when not authenticated
+            if is_production():
+                st.error("🔒 **Auth Required**")
+                st.stop()  # Stop execution if not authenticated in production
     
     col1, col2 = st.columns([3, 1])
     

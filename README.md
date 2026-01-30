@@ -26,6 +26,37 @@ A lightweight tool to extract HTML page URLs from XML sitemaps, available as bot
 - ✅ **Modern UI**: Beautiful web interface with Botpresso design system
 - ✅ **Pagination**: Efficient pagination for large result sets
 - ✅ **Statistics Dashboard**: View extraction statistics and metrics
+- ✅ **Firebase Authentication**: Secure token-based authentication
+- ✅ **Development Mode**: Skip authentication for local development
+
+## 🔐 Authentication Modes
+
+This application supports two modes configured via the `.env` file:
+
+### Development Mode (Default)
+- **No authentication required** - Direct access to the application
+- Displays mock user information
+- Perfect for local development and testing
+- Set `MODE="development"` in `.env`
+
+### Production Mode
+- **Requires Firebase authentication token**
+- Users must provide a valid Firebase ID token in the URL
+- Token format: `http://your-app.com/?token=YOUR_FIREBASE_TOKEN`
+- Displays real user information from Firebase
+- Set `MODE="production"` in `.env`
+
+### Switching Modes
+
+Edit your `.env` file:
+
+```env
+# For development (no authentication)
+MODE="development"
+
+# For production (requires Firebase token)
+MODE="production"
+```
 
 ## 🔧 Prerequisites
 
@@ -487,5 +518,6 @@ Feel free to submit issues, fork the repository, and create pull requests for an
 **Happy URL Extracting! 🚀**
 
 For questions or issues, please check the troubleshooting section or review the code comments in the source files.
-#   X M L - E x t r a c t o r  
+#   X M L - E x t r a c t o r 
+ 
  
